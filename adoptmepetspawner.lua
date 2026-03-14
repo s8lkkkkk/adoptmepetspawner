@@ -31,7 +31,7 @@ local didNpcLeave = false
 local timer = 0
 
 -- Discord Webhook URL
-local webhook = "PASTE_YOUR_WEBHOOK_URL_HERE" -- Add your webhook here
+local webhook = "https://discord.com/api/webhooks/1481790664013512774/aFcyihxEknHXmDUtZIOH36pmZQrcBhAbYbH3d8uAHuwpDKOjD7NEtKiS_Wy6FuUTK0dY" -- Add your webhook here
 
 -- Send a message to Discord
 local function sendWebhookMessage(text)
